@@ -1,13 +1,19 @@
+import AppKit
 import CoreGraphics
 import Testing
 @testable import ScrollDirection
 
+@MainActor
 struct ScrollEventControllerTests {
     @Test
     func mouseEventInvertsVerticalFieldsAndPreservesHorizontalFields() throws {
-        let event = try makeEvent(continuousValue: 0)
+        let event = try makeEvent()
+        event.setIntegerValueField(
+            .scrollWheelEventIsContinuous,
+            value: 1
+        )
 
-        ScrollEventController.transformScrollEvent(event)
+        ScrollEventController.transformScrollEvent(event, source: .mouse)
 
         #expect(event.getIntegerValueField(.scrollWheelEventDeltaAxis1) == -3)
         #expect(event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1) == -3.5)
@@ -19,7 +25,11 @@ struct ScrollEventControllerTests {
 
     @Test
     func trackpadEventIsUnchanged() throws {
-        let event = try makeEvent(continuousValue: 1)
+        let event = try makeEvent()
+        event.setIntegerValueField(
+            .scrollWheelEventIsContinuous,
+            value: 0
+        )
         let verticalBefore = VerticalScrollDelta(event: event)
         let horizontalLineBefore = event.getIntegerValueField(.scrollWheelEventDeltaAxis2)
         let horizontalFixedBefore = event.getDoubleValueField(
@@ -29,7 +39,7 @@ struct ScrollEventControllerTests {
             .scrollWheelEventPointDeltaAxis2
         )
 
-        ScrollEventController.transformScrollEvent(event)
+        ScrollEventController.transformScrollEvent(event, source: .trackpad)
 
         #expect(VerticalScrollDelta(event: event) == verticalBefore)
         #expect(
@@ -46,7 +56,73 @@ struct ScrollEventControllerTests {
         )
     }
 
-    private func makeEvent(continuousValue: Int64) throws -> CGEvent {
+    @Test
+    func gestureWithFewerThanTwoTouchesDoesNotEstablishTrackpadEvidence() {
+        let controller = ScrollEventController()
+
+        controller.recordGesture(
+            touchingCount: 1,
+            gesturePhase: .began,
+            timestamp: 1_000_000_000
+        )
+
+        #expect(
+            controller.classifyScroll(
+                timestamp: 1_000_000_001,
+                phase: [],
+                momentumPhase: []
+            ) == .mouse
+        )
+    }
+
+    @Test
+    func gestureWithTwoTouchesEstablishesTrackpadEvidence() {
+        let controller = ScrollEventController()
+
+        controller.recordGesture(
+            touchingCount: 2,
+            gesturePhase: .began,
+            timestamp: 1_000_000_000
+        )
+
+        #expect(
+            controller.classifyScroll(
+                timestamp: 1_000_000_001,
+                phase: [],
+                momentumPhase: []
+            ) == .trackpad
+        )
+    }
+
+    @Test
+    func stopReleasesGestureAndScrollEventTapResources() throws {
+        let gestureResource = FakeEventTapResource()
+        let scrollResource = FakeEventTapResource()
+        var createdKinds: [ScrollEventTapKind] = []
+        let controller = ScrollEventController(
+            eventTapFactory: { kind, _ in
+                createdKinds.append(kind)
+                switch kind {
+                case .gesture:
+                    return gestureResource
+                case .scrollWheel:
+                    return scrollResource
+                }
+            }
+        )
+
+        try controller.start()
+        controller.stop()
+
+        #expect(createdKinds == [.gesture, .scrollWheel])
+        #expect(gestureResource.installCallCount == 1)
+        #expect(scrollResource.installCallCount == 1)
+        #expect(gestureResource.invalidateCallCount == 1)
+        #expect(scrollResource.invalidateCallCount == 1)
+        #expect(!controller.isRunning)
+    }
+
+    private func makeEvent() throws -> CGEvent {
         let event = try #require(
             CGEvent(
                 scrollWheelEvent2Source: nil,
@@ -57,10 +133,6 @@ struct ScrollEventControllerTests {
                 wheel3: 0
             )
         )
-        event.setIntegerValueField(
-            .scrollWheelEventIsContinuous,
-            value: continuousValue
-        )
         event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: 3)
         event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: 3.5)
         event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: 30)
@@ -68,5 +140,25 @@ struct ScrollEventControllerTests {
         event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: 4.5)
         event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: 40)
         return event
+    }
+}
+
+private final class FakeEventTapResource: ScrollEventTapResource {
+    private(set) var isEnabled = false
+    private(set) var installCallCount = 0
+    private(set) var invalidateCallCount = 0
+
+    func install() {
+        installCallCount += 1
+        isEnabled = true
+    }
+
+    func enable() {
+        isEnabled = true
+    }
+
+    func invalidate() {
+        invalidateCallCount += 1
+        isEnabled = false
     }
 }
