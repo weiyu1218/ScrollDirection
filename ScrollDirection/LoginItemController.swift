@@ -11,6 +11,12 @@ enum LoginItemStatus: Equatable {
     }
 }
 
+enum LoginItemOperation: Equatable {
+    case none
+    case register
+    case unregister
+}
+
 protocol LoginItemControlling {
     var status: LoginItemStatus { get }
     func setEnabled(_ enabled: Bool) throws
@@ -19,14 +25,11 @@ protocol LoginItemControlling {
 
 enum LoginItemControllerError: LocalizedError {
     case requiresApproval
-    case notFound
 
     var errorDescription: String? {
         switch self {
         case .requiresApproval:
             "登录项需要在系统设置中批准。"
-        case .notFound:
-            "系统未找到主应用登录项。"
         }
     }
 }
@@ -55,17 +58,31 @@ struct SystemLoginItemController: LoginItemControlling {
         }
     }
 
-    func setEnabled(_ enabled: Bool) throws {
+    static func operation(
+        enabled: Bool,
+        status: LoginItemStatus
+    ) throws -> LoginItemOperation {
         switch (enabled, status) {
-        case (true, .enabled), (false, .notRegistered):
-            return
+        case (true, .enabled),
+             (false, .notRegistered),
+             (false, .notFound):
+            .none
         case (true, .requiresApproval):
             throw LoginItemControllerError.requiresApproval
-        case (_, .notFound):
-            throw LoginItemControllerError.notFound
-        case (true, .notRegistered):
-            try service.register()
+        case (true, .notRegistered), (true, .notFound):
+            .register
         case (false, .enabled), (false, .requiresApproval):
+            .unregister
+        }
+    }
+
+    func setEnabled(_ enabled: Bool) throws {
+        switch try Self.operation(enabled: enabled, status: status) {
+        case .none:
+            return
+        case .register:
+            try service.register()
+        case .unregister:
             try service.unregister()
         }
     }
