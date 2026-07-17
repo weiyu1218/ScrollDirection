@@ -1975,7 +1975,7 @@ Expected: 两个分支首次推送成功，不使用 force push。
 Run:
 
 ~~~bash
-gh pr create --draft --base main --head feature/scroll-direction-app --title "feat: 支持鼠标与触控板独立滚动方向" --body $'## Summary\n- 在系统自然滚动开启时，仅反转离散鼠标的垂直滚动\n- 保持触控板连续与惯性滚动原样\n- 提供菜单栏状态、权限引导和登录时启动\n\n## Verification\n- Swift Testing 全部通过\n- Swift 6 严格并发构建通过\n- Release 代码签名验证通过\n- GPW2 continuousValue 为 0，内置触控板为非 0\n- 标准应用、接收器重连、睡眠唤醒、重新登录和权限撤销验收通过'
+gh pr create --draft --base main --head feature/scroll-direction-app --title "feat: 支持鼠标与触控板独立滚动方向" --body $'## Summary\n- 在系统自然滚动开启时，仅反转鼠标的垂直滚动\n- 保持触控板连续与惯性滚动原样\n- 提供菜单栏状态、权限引导和登录时启动\n\n## Verification\n- Swift Testing 全部通过\n- Swift 6 严格并发构建通过\n- Release 代码签名验证通过\n- GPW2 与内置触控板的 continuousValue 均为 0，未使用该字段分类\n- 双指手势证据将内置触控板识别为 trackpad，GPW2 识别为 mouse\n- 标准应用、接收器重连、睡眠唤醒、重新登录和权限撤销验收通过'
 gh pr view --json url,isDraft,baseRefName,headRefName,state
 ~~~
 
